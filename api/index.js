@@ -1,10 +1,12 @@
+// Код для faceit-proxy-server/api/index.js
+
 require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
 const cors = require('cors');
 const app = express();
-const PORT = process.env.PORT || 3000;
 
+// Этот middleware нужен, чтобы Vercel мог работать с Express
 app.use(cors());
 
 async function getGameStats(playerId, game, apiKey) {
@@ -18,9 +20,8 @@ async function getGameStats(playerId, game, apiKey) {
     }
 }
 
-// ИЗМЕНЕНИЕ №1: Функция getMatchHistory полностью удалена
-
-app.get('/getStats/:steam_id', async (req, res) => {
+// ИЗМЕНЕНИЕ №1: Маршрут теперь должен включать /api/
+app.get('/api/getStats/:steam_id', async (req, res) => {
     const steamId = req.params.steam_id;
     const FACEIT_API_KEY = process.env.FACEIT_API_KEY;
 
@@ -40,13 +41,10 @@ app.get('/getStats/:steam_id', async (req, res) => {
         const player = await idSearchResponse.json();
         const faceitId = player.player_id;
         
-        // ИЗМЕНЕНИЕ №2: Убираем history из Promise.all
         const [cs2Stats, csgoStats] = await Promise.all([
             getGameStats(faceitId, 'cs2', FACEIT_API_KEY),
             getGameStats(faceitId, 'csgo', FACEIT_API_KEY)
         ]);
-        
-        // ИЗМЕНЕНИЕ №3: Логика обработки recentMatches полностью удалена
 
         const faceitUrl = player.faceit_url 
             ? player.faceit_url.replace('{lang}', 'en') 
@@ -56,7 +54,6 @@ app.get('/getStats/:steam_id', async (req, res) => {
             nickname: player.nickname,
             country: player.country,
             faceitUrl: faceitUrl,
-            // recentMatches удален из ответа
             cs2: {
                 elo: player.games?.cs2?.faceit_elo,
                 level: player.games?.cs2?.skill_level,
@@ -79,6 +76,5 @@ app.get('/getStats/:steam_id', async (req, res) => {
     }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Сервер запущен на порту ${PORT}`);
-});
+// ИЗМЕНЕНИЕ №2: Удаляем app.listen и экспортируем app для Vercel
+module.exports = app;

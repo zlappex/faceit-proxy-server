@@ -1,0 +1,6 @@
+{
+  "version": 2,
+  "rewrites": [
+    { "source": "/getStats/:steam_id", "destination": "/api" }
+  ]
+}
