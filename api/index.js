@@ -1,5 +1,3 @@
-// Код для faceit-proxy-server/api/index.js
-
 require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
@@ -20,8 +18,8 @@ async function getGameStats(playerId, game, apiKey) {
     }
 }
 
-// ИЗМЕНЕНИЕ №1: Маршрут теперь должен включать /api/
-app.get('/api/getStats/:steam_id', async (req, res) => {
+// ИСПРАВЛЕНИЕ: Убираем /api из маршрута. Vercel обработает это сам.
+app.get('/getStats/:steam_id', async (req, res) => {
     const steamId = req.params.steam_id;
     const FACEIT_API_KEY = process.env.FACEIT_API_KEY;
 
@@ -76,5 +74,5 @@ app.get('/api/getStats/:steam_id', async (req, res) => {
     }
 });
 
-// ИЗМЕНЕНИЕ №2: Удаляем app.listen и экспортируем app для Vercel
+// Экспортируем app для Vercel
 module.exports = app;
