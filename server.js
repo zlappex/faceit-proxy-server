@@ -18,14 +18,7 @@ async function getGameStats(playerId, game, apiKey) {
     }
 }
 
-async function getMatchHistory(playerId, apiKey) {
-    try {
-        const res = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=0&limit=5`, {
-            headers: { 'Authorization': `Bearer ${apiKey}` }
-        });
-        return res.ok ? res.json() : null;
-    } catch (e) { return null; }
-}
+// ИЗМЕНЕНИЕ №1: Функция getMatchHistory полностью удалена
 
 app.get('/getStats/:steam_id', async (req, res) => {
     const steamId = req.params.steam_id;
@@ -47,23 +40,13 @@ app.get('/getStats/:steam_id', async (req, res) => {
         const player = await idSearchResponse.json();
         const faceitId = player.player_id;
         
-        const [cs2Stats, csgoStats, history] = await Promise.all([
+        // ИЗМЕНЕНИЕ №2: Убираем history из Promise.all
+        const [cs2Stats, csgoStats] = await Promise.all([
             getGameStats(faceitId, 'cs2', FACEIT_API_KEY),
-            getGameStats(faceitId, 'csgo', FACEIT_API_KEY),
-            getMatchHistory(faceitId, FACEIT_API_KEY)
+            getGameStats(faceitId, 'csgo', FACEIT_API_KEY)
         ]);
         
-        // ИСПРАВЛЕНИЕ ЗДЕСЬ: Добавляем проверку, что match.teams - это массив
-        const recentMatches = history?.items?.map(match => {
-            if (!match || !Array.isArray(match.teams) || match.teams.length === 0) {
-                return 'N'; // "N" - для матчей с неизвестным результатом
-            }
-            const playerTeam = match.teams.find(team => team.players.some(p => p.player_id === faceitId));
-            if (!playerTeam?.team_stats?.team_win) {
-                return 'N';
-            }
-            return playerTeam.team_stats.team_win === "1" ? "W" : "L";
-        }) || [];
+        // ИЗМЕНЕНИЕ №3: Логика обработки recentMatches полностью удалена
 
         const faceitUrl = player.faceit_url 
             ? player.faceit_url.replace('{lang}', 'en') 
@@ -73,7 +56,7 @@ app.get('/getStats/:steam_id', async (req, res) => {
             nickname: player.nickname,
             country: player.country,
             faceitUrl: faceitUrl,
-            recentMatches: recentMatches,
+            // recentMatches удален из ответа
             cs2: {
                 elo: player.games?.cs2?.faceit_elo,
                 level: player.games?.cs2?.skill_level,
