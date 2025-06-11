@@ -18,10 +18,9 @@ async function getGameStats(playerId, game, apiKey) {
     }
 }
 
-// ИЗМЕНЕНИЕ №1: Новая функция для расчета статистики за последние 20 матчей
+// ИЗМЕНЕНИЕ №1: Дорабатываем функцию расчета статистики
 async function calculateLast20Stats(playerId, apiKey) {
     try {
-        // Запрос истории последних 20 матчей
         const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=0&limit=20`, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
         });
@@ -30,7 +29,6 @@ async function calculateLast20Stats(playerId, apiKey) {
         const historyData = await historyRes.json();
         if (!historyData.items || historyData.items.length === 0) return null;
         
-        // Получаем детальную статистику по каждому матчу
         const matchStatsPromises = historyData.items.map(match =>
             fetch(`https://open.faceit.com/data/v4/matches/${match.match_id}/stats`, {
                 headers: { 'Authorization': `Bearer ${apiKey}` }
@@ -39,10 +37,9 @@ async function calculateLast20Stats(playerId, apiKey) {
         
         const detailedMatches = await Promise.all(matchStatsPromises);
 
-        let totalKills = 0, totalDeaths = 0, totalRounds = 0, totalHeadshots = 0;
+        let totalKills = 0, totalDeaths = 0, totalRounds = 0, totalHeadshots = 0, wins = 0;
         let validMatchesCount = 0;
 
-        // Считаем общую статистику
         for (const match of detailedMatches) {
             const roundStats = match?.rounds?.[0];
             if (!roundStats) continue;
@@ -54,17 +51,25 @@ async function calculateLast20Stats(playerId, apiKey) {
                 totalHeadshots += parseInt(playerInMatch.player_stats.Headshots, 10) || 0;
                 totalRounds += parseInt(roundStats.round_stats['Rounds'], 10) || 0;
                 validMatchesCount++;
+                // Считаем победы
+                if (playerInMatch.player_stats.Result === "1") {
+                    wins++;
+                }
             }
         }
         
         if (validMatchesCount === 0) return null;
 
-        // Возвращаем посчитанные значения
+        const losses = validMatchesCount - wins;
+
+        // Возвращаем посчитанные значения, включая wins и losses
         return {
             avg: (totalKills / validMatchesCount).toFixed(2),
             kd: (totalDeaths === 0) ? totalKills.toFixed(2) : (totalKills / totalDeaths).toFixed(2),
-            kr: (totalRounds === 0) ? 0 : (totalKills / totalRounds).toFixed(2),
-            hs: (totalKills === 0) ? 0 : (totalHeadshots / totalKills * 100).toFixed(0)
+            kr: (totalRounds === 0) ? "0.00" : (totalKills / totalRounds).toFixed(2),
+            hs: (totalKills === 0) ? "0" : (totalHeadshots / totalKills * 100).toFixed(0),
+            wins: wins,
+            losses: losses
         };
 
     } catch (error) {
@@ -94,23 +99,22 @@ app.get('/getStats/:steam_id', async (req, res) => {
         const player = await idSearchResponse.json();
         const faceitId = player.player_id;
         
-        // ИЗМЕНЕНИЕ №2: Добавляем вызов новой функции в Promise.all
         const [cs2Stats, csgoStats, last20Stats] = await Promise.all([
             getGameStats(faceitId, 'cs2', FACEIT_API_KEY),
             getGameStats(faceitId, 'csgo', FACEIT_API_KEY),
-            calculateLast20Stats(faceitId, FACEIT_API_KEY) // Запрашиваем новую статистику
+            calculateLast20Stats(faceitId, FACEIT_API_KEY)
         ]);
         
         const faceitUrl = player.faceit_url 
             ? player.faceit_url.replace('{lang}', 'en') 
             : `https://www.faceit.com/en/players/${player.nickname}`;
 
-        // ИЗМЕНЕНИЕ №3: Добавляем last20Stats в финальный ответ
+        // Ответ остается таким же, но теперь в last20Stats есть wins и losses
         const finalResponse = {
             nickname: player.nickname,
             country: player.country,
             faceitUrl: faceitUrl,
-            last20: last20Stats, // Поле со статистикой за 20 игр
+            last20: last20Stats,
             cs2: {
                 elo: player.games?.cs2?.faceit_elo,
                 level: player.games?.cs2?.skill_level,
