@@ -48,11 +48,11 @@ async function calculateLast20Stats(playerId, apiKey) {
             if (!roundStats) continue;
 
             const playerInMatch = roundStats.teams?.flatMap(team => team.players).find(p => p.player_id === playerId);
-            if (playerInMatch) {
-                totalKills += parseInt(playerInMatch.player_stats.Kills, 10);
-                totalDeaths += parseInt(playerInMatch.player_stats.Deaths, 10);
-                totalHeadshots += parseInt(playerInMatch.player_stats.Headshots, 10);
-                totalRounds += parseInt(roundStats.round_stats['Rounds'], 10);
+            if (playerInMatch && playerInMatch.player_stats) {
+                totalKills += parseInt(playerInMatch.player_stats.Kills, 10) || 0;
+                totalDeaths += parseInt(playerInMatch.player_stats.Deaths, 10) || 0;
+                totalHeadshots += parseInt(playerInMatch.player_stats.Headshots, 10) || 0;
+                totalRounds += parseInt(roundStats.round_stats['Rounds'], 10) || 0;
                 validMatchesCount++;
             }
         }
@@ -133,4 +133,5 @@ app.get('/getStats/:steam_id', async (req, res) => {
     }
 });
 
+// Экспортируем app для Vercel
 module.exports = app;
