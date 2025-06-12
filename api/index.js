@@ -6,26 +6,33 @@ const app = express();
 
 app.use(cors());
 
-// --- НОВАЯ ФУНКЦИЯ для расчета изменения ELO ---
+// --- ИЗМЕНЕНИЕ: Добавляем подробное логирование ---
 async function calculateEloChange(playerId, currentElo, apiKey) {
     try {
-        // Запрашиваем только 20-й матч в истории
+        console.log(`[LOG] Attempting to calculate ELO change for player: ${playerId}`);
         const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=1`, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
         });
-        if (!historyRes.ok) return null;
+        
+        if (!historyRes.ok) {
+            console.error(`[ERROR] Failed to fetch match history for ELO change. Status: ${historyRes.status}`);
+            return null;
+        }
 
         const historyData = await historyRes.json();
-        // Если у игрока меньше 20 матчей, items будет пустым
         if (!historyData.items || historyData.items.length === 0) {
+            console.log(`[LOG] Player has fewer than 20 matches, cannot calculate ELO change.`);
             return null;
         }
 
         const eloAfter20thGameInPast = historyData.items[0].elo;
-        if (eloAfter20thGameInPast === undefined) return null;
+        if (eloAfter20thGameInPast === undefined) {
+            console.log(`[LOG] The 20th match in history does not have an ELO value.`);
+            return null;
+        }
         
-        // Рассчитываем разницу
         const eloChange = currentElo - eloAfter20thGameInPast;
+        console.log(`[LOG] ELO change calculated successfully: ${eloChange}`);
         return eloChange;
 
     } catch (error) {
@@ -36,7 +43,6 @@ async function calculateEloChange(playerId, currentElo, apiKey) {
 
 
 async function getGameStats(playerId, game, apiKey) {
-    // ... эта функция без изменений
     try {
         const statsResponse = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/stats/${game}`, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
@@ -48,7 +54,6 @@ async function getGameStats(playerId, game, apiKey) {
 }
 
 async function calculateLast20Stats(playerId, apiKey) {
-    // ... эта функция без изменений
     try {
         const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=0&limit=20`, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
@@ -127,7 +132,6 @@ app.get('/getStats/:steam_id', async (req, res) => {
         const faceitId = player.player_id;
         const currentCs2Elo = player.games?.cs2?.faceit_elo;
         
-        // --- ИЗМЕНЕНИЕ: Вызываем все расчеты параллельно, включая новый ---
         const [cs2Stats, csgoStats, last20Stats, eloChange] = await Promise.all([
             getGameStats(faceitId, 'cs2', FACEIT_API_KEY),
             getGameStats(faceitId, 'csgo', FACEIT_API_KEY),
@@ -139,7 +143,6 @@ app.get('/getStats/:steam_id', async (req, res) => {
             ? player.faceit_url.replace('{lang}', 'en') 
             : `https://www.faceit.com/en/players/${player.nickname}`;
 
-        // --- ИЗМЕНЕНИЕ: Добавляем elo_change в объект last20 ---
         const finalResponse = {
             nickname: player.nickname,
             country: player.country,
