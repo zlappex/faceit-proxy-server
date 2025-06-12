@@ -7,7 +7,7 @@ const app = express();
 
 app.use(cors());
 
-// --- ФИНАЛЬНАЯ ДИАГНОСТИКА ---
+// --- ФИНАЛЬНАЯ ДИАГНОСТИКА: Читаем и логируем тело ошибки 400 ---
 async function calculateEloChange(playerId, currentElo, apiKey) {
     try {
         const apiUrl = `https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=10`;
@@ -19,37 +19,31 @@ async function calculateEloChange(playerId, currentElo, apiKey) {
 
         console.log(`[DIAGNOSTIC] Step 2: API response status is: ${historyRes.status}`);
 
-        if (historyRes.status === 400) {
-            console.log('[DIAGNOSTIC] Step 3: API returned 400. Conclusion: Player has < 20 matches. Returning null.');
-            return null;
-        }
-
+        // Если ответ НЕ успешный, пытаемся прочитать тело ответа
         if (!historyRes.ok) {
-            console.error('[DIAGNOSTIC] Step 3: API request failed with a non-400 error. Returning null.');
-            return null;
+            try {
+                const errorBody = await historyRes.json();
+                console.error('[DIAGNOSTIC] API returned an error. Full error body:', JSON.stringify(errorBody, null, 2));
+            } catch (e) {
+                console.error('[DIAGNOSTIC] API returned an error, and the body could not be parsed as JSON.');
+            }
+            return null; // В любом случае завершаем, если запрос не удался
         }
 
+        // Этот код выполнится только если статус 200 OK
         const historyData = await historyRes.json();
-        console.log('[DIAGNOSTIC] Step 3: Full payload from Faceit API:', JSON.stringify(historyData, null, 2));
-
-        if (!historyData.items || historyData.items.length === 0) {
-            console.log('[DIAGNOSTIC] Step 4: Payload has no "items". Returning null.');
-            return null;
-        }
+        console.log('[DIAGNOSTIC] Step 3: Success! Full payload from Faceit API:', JSON.stringify(historyData, null, 2));
 
         let pastElo = undefined;
-        console.log('[DIAGNOSTIC] Step 4: Starting to loop through matches to find ELO...');
         for (const match of historyData.items) {
-            console.log(`[DIAGNOSTIC] ...checking match. ELO value is: ${match.elo}`);
             if (match.elo !== undefined && match.elo !== null) {
                 pastElo = match.elo;
-                console.log(`[DIAGNOSTIC] ...found valid ELO: ${pastElo}. Stopping loop.`);
                 break;
             }
         }
 
         if (pastElo === undefined) {
-            console.log('[DIAGNOSTIC] Step 5: Loop finished, no valid ELO found. Returning null.');
+            console.log('[DIAGNOSTIC] Step 4: No valid ELO found in matches. Returning null.');
             return null;
         }
         
