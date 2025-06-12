@@ -6,7 +6,6 @@ const app = express();
 
 app.use(cors());
 
-// Ваша существующая функция, без изменений
 async function getGameStats(playerId, game, apiKey) {
     try {
         const statsResponse = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/stats/${game}`, {
@@ -18,7 +17,6 @@ async function getGameStats(playerId, game, apiKey) {
     }
 }
 
-// Доработанная функция расчета статистики
 async function calculateLast20Stats(playerId, apiKey) {
     try {
         const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=0&limit=20`, {
@@ -36,8 +34,7 @@ async function calculateLast20Stats(playerId, apiKey) {
         );
 
         const detailedMatches = await Promise.all(matchStatsPromises);
-
-        // НОВОЕ: Добавляем переменную для суммирования ADR
+        
         let totalKills = 0, totalDeaths = 0, totalRounds = 0, totalHeadshots = 0, wins = 0, totalADR = 0;
         let validMatchesCount = 0;
 
@@ -51,11 +48,15 @@ async function calculateLast20Stats(playerId, apiKey) {
                 totalDeaths += parseInt(playerInMatch.player_stats.Deaths, 10) || 0;
                 totalHeadshots += parseInt(playerInMatch.player_stats.Headshots, 10) || 0;
                 totalRounds += parseInt(roundStats.round_stats['Rounds'], 10) || 0;
-                // НОВОЕ: Суммируем ADR (статистика 'c5' из API Faceit)
-                totalADR += parseFloat(playerInMatch.player_stats.c5) || 0;
+                
+                // ==========================================================
+                // ИСПРАВЛЕНИЕ: ADR находится в поле 'c4', а не 'c5'
+                // ==========================================================
+                totalADR += parseFloat(playerInMatch.player_stats.c4) || 0;
+                // ==========================================================
 
                 validMatchesCount++;
-                // Считаем победы
+
                 if (playerInMatch.player_stats.Result === "1") {
                     wins++;
                 }
@@ -65,14 +66,11 @@ async function calculateLast20Stats(playerId, apiKey) {
         if (validMatchesCount === 0) return null;
 
         const losses = validMatchesCount - wins;
-        
-        // НОВОЕ: Рассчитываем средний ADR
         const averageADR = (validMatchesCount > 0) ? (totalADR / validMatchesCount).toFixed(0) : "0";
 
-        // Возвращаем посчитанные значения, включая ADR
         return {
             avg: (totalKills / validMatchesCount).toFixed(2),
-            adr: averageADR, // Добавили ADR в ответ
+            adr: averageADR,
             kd: (totalDeaths === 0) ? totalKills.toFixed(2) : (totalKills / totalDeaths).toFixed(2),
             kr: (totalRounds === 0) ? "0.00" : (totalKills / totalRounds).toFixed(2),
             hs: (totalKills === 0) ? "0" : (totalHeadshots / totalKills * 100).toFixed(0),
@@ -144,5 +142,4 @@ app.get('/getStats/:steam_id', async (req, res) => {
     }
 });
 
-// Экспортируем app для Vercel
 module.exports = app;
