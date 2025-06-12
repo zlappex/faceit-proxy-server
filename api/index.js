@@ -6,45 +6,59 @@ const app = express();
 
 app.use(cors());
 
-// --- ИЗМЕНЕНИЕ: Функция стала более надежной ---
+// --- ИЗМЕНЕНИЕ: Агрессивное логирование для финальной отладки ---
 async function calculateEloChange(playerId, currentElo, apiKey) {
     try {
-        // Запрашиваем 10 матчей, начиная с 20-го, чтобы найти хотя бы один с ELO
-        const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=10`, {
+        const apiUrl = `https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=10`;
+        console.log(`[DEBUG] Fetching ELO history from URL: ${apiUrl}`);
+        
+        const historyRes = await fetch(apiUrl, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
         });
-        if (!historyRes.ok) return null;
+        
+        console.log(`[DEBUG] History API response status: ${historyRes.status}`);
+        if (!historyRes.ok) {
+            console.error(`[FATAL] ELO history request failed.`);
+            return null;
+        }
 
         const historyData = await historyRes.json();
+        // ЛОГИРУЕМ ВЕСЬ ОТВЕТ ОТ FACEIT, чтобы увидеть его структуру
+        console.log('[DEBUG] Full history data received:', JSON.stringify(historyData, null, 2));
+
         if (!historyData.items || historyData.items.length === 0) {
-            // У игрока меньше 20 матчей
+            console.log(`[INFO] Player has fewer than 20 matches. No items in history response.`);
             return null;
         }
 
         let pastElo = undefined;
-        // Ищем первый же матч в списке, у которого есть значение ELO
+        // Ищем первый же матч в списке, у которого есть валидное значение ELO
         for (const match of historyData.items) {
-            if (match.elo !== undefined) {
+            console.log(`[DEBUG] Checking match. ID: ${match.match_id}, ELO: ${match.elo}`);
+            if (match.elo !== undefined && match.elo !== null) {
                 pastElo = match.elo;
-                break; // Нашли, выходим из цикла
+                console.log(`[SUCCESS] Found a valid past ELO: ${pastElo}. Breaking loop.`);
+                break;
             }
         }
 
-        // Если ни в одном из 10 матчей не нашлось ELO
         if (pastElo === undefined) {
+            console.log(`[INFO] No match with a valid ELO value was found in the last 10 checked matches.`);
             return null;
         }
         
-        // Считаем разницу
         const eloChange = currentElo - pastElo;
+        console.log(`[SUCCESS] Final ELO change calculated: ${eloChange}`);
         return eloChange;
 
     } catch (error) {
-        console.error("Ошибка при расчете изменения ELO:", error);
+        console.error("[FATAL] Unhandled error in calculateEloChange:", error);
         return null;
     }
 }
 
+
+// ----- Остальная часть файла без изменений -----
 
 async function getGameStats(playerId, game, apiKey) {
     try {
