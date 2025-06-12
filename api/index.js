@@ -44,9 +44,9 @@ async function calculateLast20Stats(playerId, apiKey) {
 
             const playerInMatch = roundStats.teams?.flatMap(team => team.players).find(p => p.player_id === playerId);
             if (playerInMatch && playerInMatch.player_stats) {
-                // ==================================================
-                // ФИНАЛЬНОЕ ИСПРАВЛЕНИЕ: Используем правильный ключ 'ADR'
-                // ==================================================
+                // =======================================================
+                // ГЛАВНОЕ ИСПРАВЛЕНИЕ: Используем ключ 'ADR' из логов
+                // =======================================================
                 totalADR += parseFloat(playerInMatch.player_stats.ADR) || 0;
                 
                 totalKills += parseInt(playerInMatch.player_stats.Kills, 10) || 0;
