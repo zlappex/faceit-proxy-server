@@ -6,7 +6,37 @@ const app = express();
 
 app.use(cors());
 
+// --- НОВАЯ ФУНКЦИЯ для расчета изменения ELO ---
+async function calculateEloChange(playerId, currentElo, apiKey) {
+    try {
+        // Запрашиваем только 20-й матч в истории
+        const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=1`, {
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        if (!historyRes.ok) return null;
+
+        const historyData = await historyRes.json();
+        // Если у игрока меньше 20 матчей, items будет пустым
+        if (!historyData.items || historyData.items.length === 0) {
+            return null;
+        }
+
+        const eloAfter20thGameInPast = historyData.items[0].elo;
+        if (eloAfter20thGameInPast === undefined) return null;
+        
+        // Рассчитываем разницу
+        const eloChange = currentElo - eloAfter20thGameInPast;
+        return eloChange;
+
+    } catch (error) {
+        console.error("Ошибка при расчете изменения ELO:", error);
+        return null;
+    }
+}
+
+
 async function getGameStats(playerId, game, apiKey) {
+    // ... эта функция без изменений
     try {
         const statsResponse = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/stats/${game}`, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
@@ -18,6 +48,7 @@ async function getGameStats(playerId, game, apiKey) {
 }
 
 async function calculateLast20Stats(playerId, apiKey) {
+    // ... эта функция без изменений
     try {
         const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=0&limit=20`, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
@@ -44,11 +75,7 @@ async function calculateLast20Stats(playerId, apiKey) {
 
             const playerInMatch = roundStats.teams?.flatMap(team => team.players).find(p => p.player_id === playerId);
             if (playerInMatch && playerInMatch.player_stats) {
-                // =======================================================
-                // ГЛАВНОЕ ИСПРАВЛЕНИЕ: Используем ключ 'ADR' из логов
-                // =======================================================
                 totalADR += parseFloat(playerInMatch.player_stats.ADR) || 0;
-                
                 totalKills += parseInt(playerInMatch.player_stats.Kills, 10) || 0;
                 totalDeaths += parseInt(playerInMatch.player_stats.Deaths, 10) || 0;
                 totalHeadshots += parseInt(playerInMatch.player_stats.Headshots, 10) || 0;
@@ -98,24 +125,28 @@ app.get('/getStats/:steam_id', async (req, res) => {
         
         const player = await idSearchResponse.json();
         const faceitId = player.player_id;
+        const currentCs2Elo = player.games?.cs2?.faceit_elo;
         
-        const [cs2Stats, csgoStats, last20Stats] = await Promise.all([
+        // --- ИЗМЕНЕНИЕ: Вызываем все расчеты параллельно, включая новый ---
+        const [cs2Stats, csgoStats, last20Stats, eloChange] = await Promise.all([
             getGameStats(faceitId, 'cs2', FACEIT_API_KEY),
             getGameStats(faceitId, 'csgo', FACEIT_API_KEY),
-            calculateLast20Stats(faceitId, FACEIT_API_KEY)
+            calculateLast20Stats(faceitId, FACEIT_API_KEY),
+            currentCs2Elo ? calculateEloChange(faceitId, currentCs2Elo, FACEIT_API_KEY) : null
         ]);
         
         const faceitUrl = player.faceit_url 
             ? player.faceit_url.replace('{lang}', 'en') 
             : `https://www.faceit.com/en/players/${player.nickname}`;
 
+        // --- ИЗМЕНЕНИЕ: Добавляем elo_change в объект last20 ---
         const finalResponse = {
             nickname: player.nickname,
             country: player.country,
             faceitUrl: faceitUrl,
-            last20: last20Stats,
+            last20: last20Stats ? { ...last20Stats, elo_change: eloChange } : null,
             cs2: {
-                elo: player.games?.cs2?.faceit_elo,
+                elo: currentCs2Elo,
                 level: player.games?.cs2?.skill_level,
                 game_player_name: player.games?.cs2?.game_player_name,
                 stats: cs2Stats?.lifetime 
