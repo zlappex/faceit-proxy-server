@@ -6,7 +6,6 @@ const app = express();
 
 app.use(cors());
 
-// ... функция getGameStats остается без изменений ...
 async function getGameStats(playerId, game, apiKey) {
     try {
         const statsResponse = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/stats/${game}`, {
@@ -20,20 +19,13 @@ async function getGameStats(playerId, game, apiKey) {
 
 async function calculateLast20Stats(playerId, apiKey) {
     try {
-        console.log(`[LOG] Starting to calculate last 20 stats for player: ${playerId}`);
         const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=0&limit=20`, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
         });
-        if (!historyRes.ok) {
-            console.error('[ERROR] Failed to fetch match history.');
-            return null;
-        }
+        if (!historyRes.ok) return null;
 
         const historyData = await historyRes.json();
-        if (!historyData.items || historyData.items.length === 0) {
-            console.log('[LOG] No matches found in history.');
-            return null;
-        }
+        if (!historyData.items || historyData.items.length === 0) return null;
 
         const matchStatsPromises = historyData.items.map(match =>
             fetch(`https://open.faceit.com/data/v4/matches/${match.match_id}/stats`, {
@@ -45,7 +37,6 @@ async function calculateLast20Stats(playerId, apiKey) {
         
         let totalKills = 0, totalDeaths = 0, totalRounds = 0, totalHeadshots = 0, wins = 0, totalADR = 0;
         let validMatchesCount = 0;
-        let isFirstMatch = true; // Флаг для логирования только первого матча
 
         for (const match of detailedMatches) {
             const roundStats = match?.rounds?.[0];
@@ -53,20 +44,11 @@ async function calculateLast20Stats(playerId, apiKey) {
 
             const playerInMatch = roundStats.teams?.flatMap(team => team.players).find(p => p.player_id === playerId);
             if (playerInMatch && playerInMatch.player_stats) {
+                // ==================================================
+                // ФИНАЛЬНОЕ ИСПРАВЛЕНИЕ: Используем правильный ключ 'ADR'
+                // ==================================================
+                totalADR += parseFloat(playerInMatch.player_stats.ADR) || 0;
                 
-                // ЛОГИРУЕМ СТАТИСТИКУ ПЕРВОГО МАТЧА ДЛЯ АНАЛИЗА
-                if(isFirstMatch) {
-                    console.log('[LOG] Stats for the first player found in a match:', JSON.stringify(playerInMatch.player_stats, null, 2));
-                    isFirstMatch = false;
-                }
-                
-                // ЛОГИРУЕМ ЗНАЧЕНИЕ c4 (ADR) ДЛЯ КАЖДОГО МАТЧА
-                const adrValue = playerInMatch.player_stats.c4;
-                console.log(`[LOG] Match ADR (c4) value: ${adrValue}, type: ${typeof adrValue}`);
-
-                totalADR += parseFloat(adrValue) || 0;
-                
-                // ... остальная логика суммирования ...
                 totalKills += parseInt(playerInMatch.player_stats.Kills, 10) || 0;
                 totalDeaths += parseInt(playerInMatch.player_stats.Deaths, 10) || 0;
                 totalHeadshots += parseInt(playerInMatch.player_stats.Headshots, 10) || 0;
@@ -76,15 +58,12 @@ async function calculateLast20Stats(playerId, apiKey) {
             }
         }
 
-        console.log(`[LOG] Total ADR calculated: ${totalADR}, from ${validMatchesCount} valid matches.`);
         if (validMatchesCount === 0) return null;
 
         const losses = validMatchesCount - wins;
         const averageADR = (validMatchesCount > 0) ? (totalADR / validMatchesCount).toFixed(0) : "0";
-        console.log(`[LOG] Final Average ADR being sent: ${averageADR}`);
 
         return {
-            // ... возвращаемый объект ...
             avg: (totalKills / validMatchesCount).toFixed(2),
             adr: averageADR,
             kd: (totalDeaths === 0) ? totalKills.toFixed(2) : (totalKills / totalDeaths).toFixed(2),
@@ -95,12 +74,11 @@ async function calculateLast20Stats(playerId, apiKey) {
         };
 
     } catch (error) {
-        console.error("[FATAL ERROR] in calculateLast20Stats:", error);
+        console.error("Ошибка при расчете статистики за 20 матчей:", error);
         return null;
     }
 }
 
-// ... остальная часть файла (app.get('/getStats/:steam_id', ...)) остается без изменений ...
 app.get('/getStats/:steam_id', async (req, res) => {
     const steamId = req.params.steam_id;
     const FACEIT_API_KEY = process.env.FACEIT_API_KEY;
