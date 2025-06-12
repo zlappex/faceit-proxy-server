@@ -1,4 +1,4 @@
-// Финальная рабочая версия, заменяет тестовый код.
+// Этот файл предназначен для финальной диагностики.
 require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
@@ -7,52 +7,64 @@ const app = express();
 
 app.use(cors());
 
-// --- ФИНАЛЬНАЯ РАБОЧАЯ ВЕРСИЯ: Ищет ELO в диапазоне матчей ---
+// --- ФИНАЛЬНАЯ ДИАГНОСТИКА ---
 async function calculateEloChange(playerId, currentElo, apiKey) {
     try {
-        // Запрашиваем 10 матчей, начиная с 20-го в прошлом, чтобы найти хотя бы один с ELO
-        const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=10`, {
+        const apiUrl = `https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=10`;
+        console.log(`[DIAGNOSTIC] Step 1: Calling API URL: ${apiUrl}`);
+        
+        const historyRes = await fetch(apiUrl, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
         });
 
-        // Если Faceit отвечает 400, это значит, что у игрока < 20 матчей.
+        console.log(`[DIAGNOSTIC] Step 2: API response status is: ${historyRes.status}`);
+
         if (historyRes.status === 400) {
+            console.log('[DIAGNOSTIC] Step 3: API returned 400. Conclusion: Player has < 20 matches. Returning null.');
             return null;
         }
 
         if (!historyRes.ok) {
-            console.error(`Ошибка при запросе истории ELO: статус ${historyRes.status}`);
+            console.error('[DIAGNOSTIC] Step 3: API request failed with a non-400 error. Returning null.');
             return null;
         }
 
         const historyData = await historyRes.json();
+        console.log('[DIAGNOSTIC] Step 3: Full payload from Faceit API:', JSON.stringify(historyData, null, 2));
+
         if (!historyData.items || historyData.items.length === 0) {
+            console.log('[DIAGNOSTIC] Step 4: Payload has no "items". Returning null.');
             return null;
         }
 
         let pastElo = undefined;
-        // Ищем первый же матч в списке, у которого есть валидное значение ELO
+        console.log('[DIAGNOSTIC] Step 4: Starting to loop through matches to find ELO...');
         for (const match of historyData.items) {
+            console.log(`[DIAGNOSTIC] ...checking match. ELO value is: ${match.elo}`);
             if (match.elo !== undefined && match.elo !== null) {
                 pastElo = match.elo;
-                break; // Нашли, выходим из цикла
+                console.log(`[DIAGNOSTIC] ...found valid ELO: ${pastElo}. Stopping loop.`);
+                break;
             }
         }
 
-        // Если ни в одном из 10 проверенных матчей не нашлось ELO
         if (pastElo === undefined) {
+            console.log('[DIAGNOSTIC] Step 5: Loop finished, no valid ELO found. Returning null.');
             return null;
         }
         
         const eloChange = currentElo - pastElo;
+        console.log(`[DIAGNOSTIC] Step 5: Success! Calculated ELO change: ${eloChange}`);
         return eloChange;
 
     } catch (error) {
-        console.error("Критическая ошибка при расчете изменения ELO:", error);
+        console.error("[DIAGNOSTIC] FATAL: Unhandled error in function:", error);
         return null;
     }
 }
 
+
+// ----- Остальная часть файла без изменений -----
 
 async function getGameStats(playerId, game, apiKey) {
     try {
