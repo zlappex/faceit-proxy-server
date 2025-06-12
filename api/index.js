@@ -1,4 +1,4 @@
-// Этот файл предназначен для финальной диагностики.
+// Финальная рабочая версия, готовая к использованию.
 require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
@@ -7,58 +7,43 @@ const app = express();
 
 app.use(cors());
 
-// --- ФИНАЛЬНАЯ ДИАГНОСТИКА: Читаем и логируем тело ошибки 400 ---
+// --- ФИНАЛЬНАЯ РАБОЧАЯ ВЕРСИЯ: Использует правильную пагинацию ---
 async function calculateEloChange(playerId, currentElo, apiKey) {
     try {
-        const apiUrl = `https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=10`;
-        console.log(`[DIAGNOSTIC] Step 1: Calling API URL: ${apiUrl}`);
-        
-        const historyRes = await fetch(apiUrl, {
+        // Запрашиваем 20 матчей, чтобы безопасно получить 20-й
+        const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=0&limit=20`, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
         });
 
-        console.log(`[DIAGNOSTIC] Step 2: API response status is: ${historyRes.status}`);
-
-        // Если ответ НЕ успешный, пытаемся прочитать тело ответа
+        // Если запрос не прошел (например, у игрока вообще нет матчей)
         if (!historyRes.ok) {
-            try {
-                const errorBody = await historyRes.json();
-                console.error('[DIAGNOSTIC] API returned an error. Full error body:', JSON.stringify(errorBody, null, 2));
-            } catch (e) {
-                console.error('[DIAGNOSTIC] API returned an error, and the body could not be parsed as JSON.');
-            }
-            return null; // В любом случае завершаем, если запрос не удался
-        }
-
-        // Этот код выполнится только если статус 200 OK
-        const historyData = await historyRes.json();
-        console.log('[DIAGNOSTIC] Step 3: Success! Full payload from Faceit API:', JSON.stringify(historyData, null, 2));
-
-        let pastElo = undefined;
-        for (const match of historyData.items) {
-            if (match.elo !== undefined && match.elo !== null) {
-                pastElo = match.elo;
-                break;
-            }
-        }
-
-        if (pastElo === undefined) {
-            console.log('[DIAGNOSTIC] Step 4: No valid ELO found in matches. Returning null.');
             return null;
+        }
+
+        const historyData = await historyRes.json();
+        
+        // Если API вернуло меньше 20 матчей, значит, игрок еще не сыграл столько
+        if (!historyData.items || historyData.items.length < 20) {
+            return null;
+        }
+
+        // 20-й матч - это последний элемент в массиве (индекс 19)
+        const twentiethMatch = historyData.items[19];
+        const pastElo = twentiethMatch.elo;
+
+        if (pastElo === undefined || pastElo === null) {
+            return null; // У 20-го матча нет данных по ELO
         }
         
         const eloChange = currentElo - pastElo;
-        console.log(`[DIAGNOSTIC] Step 5: Success! Calculated ELO change: ${eloChange}`);
         return eloChange;
 
     } catch (error) {
-        console.error("[DIAGNOSTIC] FATAL: Unhandled error in function:", error);
+        console.error("Критическая ошибка при расчете изменения ELO:", error);
         return null;
     }
 }
 
-
-// ----- Остальная часть файла без изменений -----
 
 async function getGameStats(playerId, game, apiKey) {
     try {
