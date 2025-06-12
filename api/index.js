@@ -1,3 +1,4 @@
+// Финальная рабочая версия, которая теперь также отправляет ссылку на аватар.
 require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
@@ -6,8 +7,7 @@ const app = express();
 
 app.use(cors());
 
-// Функция calculateEloChange полностью удалена.
-
+// Эта функция без изменений.
 async function getGameStats(playerId, game, apiKey) {
     try {
         const statsResponse = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/stats/${game}`, {
@@ -19,6 +19,7 @@ async function getGameStats(playerId, game, apiKey) {
     }
 }
 
+// Эта функция без изменений.
 async function calculateLast20Stats(playerId, apiKey) {
     try {
         const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=0&limit=20`, {
@@ -77,6 +78,7 @@ async function calculateLast20Stats(playerId, apiKey) {
     }
 }
 
+
 app.get('/getStats/:steam_id', async (req, res) => {
     const steamId = req.params.steam_id;
     const FACEIT_API_KEY = process.env.FACEIT_API_KEY;
@@ -97,7 +99,6 @@ app.get('/getStats/:steam_id', async (req, res) => {
         const player = await idSearchResponse.json();
         const faceitId = player.player_id;
         
-        // Вызовы API теперь снова проще
         const [cs2Stats, csgoStats, last20Stats] = await Promise.all([
             getGameStats(faceitId, 'cs2', FACEIT_API_KEY),
             getGameStats(faceitId, 'csgo', FACEIT_API_KEY),
@@ -108,9 +109,10 @@ app.get('/getStats/:steam_id', async (req, res) => {
             ? player.faceit_url.replace('{lang}', 'en') 
             : `https://www.faceit.com/en/players/${player.nickname}`;
 
-        // Ответ теперь не содержит поля elo_change
         const finalResponse = {
             nickname: player.nickname,
+            // --- ИЗМЕНЕНИЕ: Добавляем аватар в ответ ---
+            avatar: player.avatar,
             country: player.country,
             faceitUrl: faceitUrl,
             last20: last20Stats,
