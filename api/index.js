@@ -6,44 +6,54 @@ const app = express();
 
 app.use(cors());
 
-// --- ФИНАЛЬНАЯ ВЕРСИЯ: Интерпретируем ошибку 400 как "матчей меньше 20" ---
+// --- ИЗМЕНЕНИЕ: Максимально подробное логирование для финальной отладки ---
 async function calculateEloChange(playerId, currentElo, apiKey) {
     try {
+        console.log(`[DEBUG] Starting ELO change calculation for player: ${playerId}`);
         const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=1`, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
         });
 
-        // Если Faceit отвечает, что запрос некорректен (400), это значит,
-        // что offset=19 недопустим, т.е. у игрока меньше 20 матчей. Это не ошибка, а условие.
+        console.log(`[DEBUG] History API response status: ${historyRes.status}`);
+        
         if (historyRes.status === 400) {
+            console.log('[INFO] API returned 400, player likely has < 20 matches. Returning null.');
             return null;
         }
-
-        // Обрабатываем другие возможные ошибки сети или сервера
         if (!historyRes.ok) {
-            console.error(`Ошибка при запросе истории ELO: статус ${historyRes.status}`);
+            console.error('[FATAL] History request failed with non-400 error. Returning null.');
             return null;
         }
 
         const historyData = await historyRes.json();
+        // ЛОГИРУЕМ ВЕСЬ ПОЛУЧЕННЫЙ ОТВЕТ
+        console.log('[DEBUG] Full history data payload received:', JSON.stringify(historyData, null, 2));
+
         if (!historyData.items || historyData.items.length === 0) {
+            console.log('[INFO] API returned 200 OK, but with no matches in "items". Returning null.');
             return null;
         }
 
         const pastElo = historyData.items[0].elo;
-        if (pastElo === undefined) {
+        console.log(`[DEBUG] Value of pastElo from historyData.items[0].elo is: ${pastElo}`);
+
+        if (pastElo === undefined || pastElo === null) {
+            console.log('[INFO] Found the 20th match, but its ELO value is missing. Returning null.');
             return null;
         }
         
         const eloChange = currentElo - pastElo;
+        console.log(`[SUCCESS] ELO change calculated: ${eloChange}`);
         return eloChange;
 
     } catch (error) {
-        console.error("Критическая ошибка при расчете изменения ELO:", error);
+        console.error("[FATAL] Unhandled error in calculateEloChange:", error);
         return null;
     }
 }
 
+
+// ----- Остальная часть файла без изменений -----
 
 async function getGameStats(playerId, game, apiKey) {
     try {
@@ -135,15 +145,12 @@ app.get('/getStats/:steam_id', async (req, res) => {
         const faceitId = player.player_id;
         const currentCs2Elo = player.games?.cs2?.faceit_elo;
         
-        // Запускаем основные расчеты
-        const [cs2Stats, csgoStats, last20Stats] = await Promise.all([
+        const [cs2Stats, csgoStats, last20Stats, eloChange] = await Promise.all([
             getGameStats(faceitId, 'cs2', FACEIT_API_KEY),
             getGameStats(faceitId, 'csgo', FACEIT_API_KEY),
-            calculateLast20Stats(faceitId, FACEIT_API_KEY)
+            calculateLast20Stats(faceitId, FACEIT_API_KEY),
+            currentCs2Elo ? await calculateEloChange(faceitId, currentCs2Elo, FACEIT_API_KEY) : null
         ]);
-
-        // Вызываем расчет ELO отдельно и независимо
-        const eloChange = currentCs2Elo ? await calculateEloChange(faceitId, currentCs2Elo, FACEIT_API_KEY) : null;
         
         const faceitUrl = player.faceit_url 
             ? player.faceit_url.replace('{lang}', 'en') 
