@@ -6,59 +6,39 @@ const app = express();
 
 app.use(cors());
 
-// --- ИЗМЕНЕНИЕ: Агрессивное логирование для финальной отладки ---
-async function calculateEloChange(playerId, currentElo, apiKey) {
+// --- ИЗМЕНЕНИЕ: Функция теперь принимает общее кол-во матчей и проверяет его ---
+async function calculateEloChange(playerId, currentElo, totalMatches, apiKey) {
     try {
-        const apiUrl = `https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=10`;
-        console.log(`[DEBUG] Fetching ELO history from URL: ${apiUrl}`);
-        
-        const historyRes = await fetch(apiUrl, {
+        // Проверяем, есть ли у игрока достаточно матчей для расчета
+        if (totalMatches < 20) {
+            return null; // Невозможно рассчитать, если матчей меньше 20
+        }
+
+        // Запрос теперь безопасен, так как мы знаем, что 20-й матч существует
+        const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=1`, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
         });
-        
-        console.log(`[DEBUG] History API response status: ${historyRes.status}`);
-        if (!historyRes.ok) {
-            console.error(`[FATAL] ELO history request failed.`);
-            return null;
-        }
+        if (!historyRes.ok) return null;
 
         const historyData = await historyRes.json();
-        // ЛОГИРУЕМ ВЕСЬ ОТВЕТ ОТ FACEIT, чтобы увидеть его структуру
-        console.log('[DEBUG] Full history data received:', JSON.stringify(historyData, null, 2));
-
         if (!historyData.items || historyData.items.length === 0) {
-            console.log(`[INFO] Player has fewer than 20 matches. No items in history response.`);
             return null;
         }
 
-        let pastElo = undefined;
-        // Ищем первый же матч в списке, у которого есть валидное значение ELO
-        for (const match of historyData.items) {
-            console.log(`[DEBUG] Checking match. ID: ${match.match_id}, ELO: ${match.elo}`);
-            if (match.elo !== undefined && match.elo !== null) {
-                pastElo = match.elo;
-                console.log(`[SUCCESS] Found a valid past ELO: ${pastElo}. Breaking loop.`);
-                break;
-            }
-        }
-
+        const pastElo = historyData.items[0].elo;
         if (pastElo === undefined) {
-            console.log(`[INFO] No match with a valid ELO value was found in the last 10 checked matches.`);
             return null;
         }
         
         const eloChange = currentElo - pastElo;
-        console.log(`[SUCCESS] Final ELO change calculated: ${eloChange}`);
         return eloChange;
 
     } catch (error) {
-        console.error("[FATAL] Unhandled error in calculateEloChange:", error);
+        console.error("Ошибка при расчете изменения ELO:", error);
         return null;
     }
 }
 
-
-// ----- Остальная часть файла без изменений -----
 
 async function getGameStats(playerId, game, apiKey) {
     try {
@@ -150,12 +130,15 @@ app.get('/getStats/:steam_id', async (req, res) => {
         const faceitId = player.player_id;
         const currentCs2Elo = player.games?.cs2?.faceit_elo;
         
-        const [cs2Stats, csgoStats, last20Stats, eloChange] = await Promise.all([
+        const [cs2Stats, csgoStats, last20Stats] = await Promise.all([
             getGameStats(faceitId, 'cs2', FACEIT_API_KEY),
             getGameStats(faceitId, 'csgo', FACEIT_API_KEY),
-            calculateLast20Stats(faceitId, FACEIT_API_KEY),
-            currentCs2Elo ? calculateEloChange(faceitId, currentCs2Elo, FACEIT_API_KEY) : null
+            calculateLast20Stats(faceitId, FACEIT_API_KEY)
         ]);
+
+        // --- ИЗМЕНЕНИЕ: Вызываем расчет ELO отдельно, после получения статистики ---
+        const totalMatches = cs2Stats?.lifetime?.Matches ? parseInt(cs2Stats.lifetime.Matches, 10) : 0;
+        const eloChange = currentCs2Elo ? await calculateEloChange(faceitId, currentCs2Elo, totalMatches, FACEIT_API_KEY) : null;
         
         const faceitUrl = player.faceit_url 
             ? player.faceit_url.replace('{lang}', 'en') 
