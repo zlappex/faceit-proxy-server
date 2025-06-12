@@ -8,10 +8,12 @@ app.use(cors());
 
 async function calculateEloChange(playerId, currentElo, totalMatches, apiKey) {
     try {
+        // Проверяем, есть ли у игрока достаточно матчей для расчета
         if (totalMatches < 20) {
-            return null; 
+            return null; // Невозможно рассчитать, если матчей меньше 20
         }
-        
+
+        // Запрос теперь безопасен, так как мы знаем, что 20-й матч существует
         const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=1`, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
         });
@@ -134,10 +136,6 @@ app.get('/getStats/:steam_id', async (req, res) => {
         ]);
         
         const totalMatches = cs2Stats?.lifetime?.m1 ? parseInt(cs2Stats.lifetime.m1, 10) : 0;
-        
-        // --- ДОБАВЛЕНА ПРОВЕРОЧНАЯ ЗАПИСЬ В ЛОГ ---
-        console.log(`[VERIFY] Player ${player.nickname} has ${totalMatches} total CS2 matches.`);
-        
         const eloChange = currentCs2Elo ? await calculateEloChange(faceitId, currentCs2Elo, totalMatches, FACEIT_API_KEY) : null;
         
         const faceitUrl = player.faceit_url 
