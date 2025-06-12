@@ -6,13 +6,15 @@ const app = express();
 
 app.use(cors());
 
+// --- ФИНАЛЬНАЯ РАБОЧАЯ ВЕРСИЯ: Ищет ELO в диапазоне матчей ---
 async function calculateEloChange(playerId, currentElo, apiKey) {
     try {
-        const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=1`, {
+        // Запрашиваем 10 матчей, начиная с 20-го в прошлом, чтобы найти хотя бы один с ELO
+        const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=10`, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
         });
 
-        // Если Faceit отвечает 400, это значит, что у игрока меньше 20 матчей.
+        // Если Faceit отвечает 400, это значит, что у игрока < 20 матчей.
         if (historyRes.status === 400) {
             return null;
         }
@@ -27,8 +29,17 @@ async function calculateEloChange(playerId, currentElo, apiKey) {
             return null;
         }
 
-        const pastElo = historyData.items[0].elo;
-        if (pastElo === undefined || pastElo === null) {
+        let pastElo = undefined;
+        // Ищем первый же матч в списке, у которого есть валидное значение ELO
+        for (const match of historyData.items) {
+            if (match.elo !== undefined && match.elo !== null) {
+                pastElo = match.elo;
+                break; // Нашли, выходим из цикла
+            }
+        }
+
+        // Если ни в одном из 10 проверенных матчей не нашлось ELO
+        if (pastElo === undefined) {
             return null;
         }
         
@@ -132,7 +143,6 @@ app.get('/getStats/:steam_id', async (req, res) => {
         const faceitId = player.player_id;
         const currentCs2Elo = player.games?.cs2?.faceit_elo;
         
-        // --- ИСПРАВЛЕННАЯ И УПРОЩЕННАЯ ЛОГИКА ---
         // Сначала получаем основную статистику
         const [cs2Stats, csgoStats, last20Stats] = await Promise.all([
             getGameStats(faceitId, 'cs2', FACEIT_API_KEY),
