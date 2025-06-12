@@ -6,33 +6,37 @@ const app = express();
 
 app.use(cors());
 
-// --- ИЗМЕНЕНИЕ: Добавляем подробное логирование ---
+// --- ИЗМЕНЕНИЕ: Функция стала более надежной ---
 async function calculateEloChange(playerId, currentElo, apiKey) {
     try {
-        console.log(`[LOG] Attempting to calculate ELO change for player: ${playerId}`);
-        const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=1`, {
+        // Запрашиваем 10 матчей, начиная с 20-го, чтобы найти хотя бы один с ELO
+        const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=10`, {
             headers: { 'Authorization': `Bearer ${apiKey}` }
         });
-        
-        if (!historyRes.ok) {
-            console.error(`[ERROR] Failed to fetch match history for ELO change. Status: ${historyRes.status}`);
-            return null;
-        }
+        if (!historyRes.ok) return null;
 
         const historyData = await historyRes.json();
         if (!historyData.items || historyData.items.length === 0) {
-            console.log(`[LOG] Player has fewer than 20 matches, cannot calculate ELO change.`);
+            // У игрока меньше 20 матчей
             return null;
         }
 
-        const eloAfter20thGameInPast = historyData.items[0].elo;
-        if (eloAfter20thGameInPast === undefined) {
-            console.log(`[LOG] The 20th match in history does not have an ELO value.`);
+        let pastElo = undefined;
+        // Ищем первый же матч в списке, у которого есть значение ELO
+        for (const match of historyData.items) {
+            if (match.elo !== undefined) {
+                pastElo = match.elo;
+                break; // Нашли, выходим из цикла
+            }
+        }
+
+        // Если ни в одном из 10 матчей не нашлось ELO
+        if (pastElo === undefined) {
             return null;
         }
         
-        const eloChange = currentElo - eloAfter20thGameInPast;
-        console.log(`[LOG] ELO change calculated successfully: ${eloChange}`);
+        // Считаем разницу
+        const eloChange = currentElo - pastElo;
         return eloChange;
 
     } catch (error) {
