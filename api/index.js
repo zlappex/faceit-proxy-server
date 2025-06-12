@@ -1,3 +1,5 @@
+// Этот файл предназначен только для одного теста.
+// Он всегда будет возвращать тестовое значение для ELO.
 require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
@@ -6,52 +8,15 @@ const app = express();
 
 app.use(cors());
 
-// --- ФИНАЛЬНАЯ РАБОЧАЯ ВЕРСИЯ: Ищет ELO в диапазоне матчей ---
+// --- ТЕСТОВАЯ ФУНКЦИЯ: Всегда возвращает фиксированное значение ---
 async function calculateEloChange(playerId, currentElo, apiKey) {
-    try {
-        // Запрашиваем 10 матчей, начиная с 20-го в прошлом, чтобы найти хотя бы один с ELO
-        const historyRes = await fetch(`https://open.faceit.com/data/v4/players/${playerId}/history?game=cs2&offset=19&limit=10`, {
-            headers: { 'Authorization': `Bearer ${apiKey}` }
-        });
-
-        // Если Faceit отвечает 400, это значит, что у игрока < 20 матчей.
-        if (historyRes.status === 400) {
-            return null;
-        }
-
-        if (!historyRes.ok) {
-            console.error(`Ошибка при запросе истории ELO: статус ${historyRes.status}`);
-            return null;
-        }
-
-        const historyData = await historyRes.json();
-        if (!historyData.items || historyData.items.length === 0) {
-            return null;
-        }
-
-        let pastElo = undefined;
-        // Ищем первый же матч в списке, у которого есть валидное значение ELO
-        for (const match of historyData.items) {
-            if (match.elo !== undefined && match.elo !== null) {
-                pastElo = match.elo;
-                break; // Нашли, выходим из цикла
-            }
-        }
-
-        // Если ни в одном из 10 проверенных матчей не нашлось ELO
-        if (pastElo === undefined) {
-            return null;
-        }
-        
-        const eloChange = currentElo - pastElo;
-        return eloChange;
-
-    } catch (error) {
-        console.error("Критическая ошибка при расчете изменения ELO:", error);
-        return null;
-    }
+    // Эта временная функция всегда возвращает 77, чтобы проверить,
+    // доходят ли данные до интерфейса расширения.
+    return 77;
 }
 
+
+// ----- Остальная часть файла без изменений -----
 
 async function getGameStats(playerId, game, apiKey) {
     try {
@@ -143,15 +108,12 @@ app.get('/getStats/:steam_id', async (req, res) => {
         const faceitId = player.player_id;
         const currentCs2Elo = player.games?.cs2?.faceit_elo;
         
-        // Сначала получаем основную статистику
-        const [cs2Stats, csgoStats, last20Stats] = await Promise.all([
+        const [cs2Stats, csgoStats, last20Stats, eloChange] = await Promise.all([
             getGameStats(faceitId, 'cs2', FACEIT_API_KEY),
             getGameStats(faceitId, 'csgo', FACEIT_API_KEY),
-            calculateLast20Stats(faceitId, FACEIT_API_KEY)
+            calculateLast20Stats(faceitId, FACEIT_API_KEY),
+            currentCs2Elo ? calculateEloChange(faceitId, currentCs2Elo, FACEIT_API_KEY) : null
         ]);
-
-        // Затем, отдельно и безопасно, рассчитываем изменение ELO
-        const eloChange = currentCs2Elo ? await calculateEloChange(faceitId, currentCs2Elo, FACEIT_API_KEY) : null;
         
         const faceitUrl = player.faceit_url 
             ? player.faceit_url.replace('{lang}', 'en') 
@@ -170,7 +132,7 @@ app.get('/getStats/:steam_id', async (req, res) => {
             },
             csgo: {
                 elo: player.games?.csgo?.faceit_elo,
-                level: player.games?.csgo?.skill_level,
+                level: player.games?.csso?.skill_level,
                 game_player_name: player.games?.csgo?.game_player_name,
                 stats: csgoStats?.lifetime
             }
